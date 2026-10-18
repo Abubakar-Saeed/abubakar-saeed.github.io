@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Constraint Graph Explorer</title>
+<meta name="description" content="Paste a protein sequence and watch a physicochemical constraint graph build in your browser — the encoding behind BioGraphX.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    color-scheme: light;
+    --bg:#ffffff; --surface:#f7f9fa; --ink:#0f1419; --quiet:#5b6673;
+    --rule:#e3e8ed; --accent:#0e9488;
+    --c1:#2a78d6; --c2:#eb6834; --c3:#1baf7a; --c4:#eda100; --c5:#6250d6;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme: dark;
+      --bg:#0d1117; --surface:#161b22; --ink:#e6edf3; --quiet:#9198a1;
+      --rule:#262c36; --accent:#2dd4bf;
+      --c1:#3987e5; --c2:#d95926; --c3:#199e70; --c4:#c98500; --c5:#9085e9;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:Inter,system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.55}
+  .wrap{max-width:1040px;margin:0 auto;padding:40px 16px 72px}
+  h1{font-family:Lora,Georgia,serif;font-weight:500;font-size:30px;margin:0 0 6px}
+  .sub{color:var(--quiet);margin:0 0 26px;font-size:15px}
+  .sub a{color:var(--accent)}
+  .panel{background:var(--surface);border:1px solid var(--rule);border-radius:12px;padding:16px}
+  textarea{width:100%;min-height:82px;resize:vertical;background:var(--bg);color:var(--ink);
+           border:1px solid var(--rule);border-radius:8px;padding:10px 12px;
+           font-family:ui-monospace,"DejaVu Sans Mono",monospace;font-size:13px;letter-spacing:.06em}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  button{font:inherit;font-size:13px;padding:6px 12px;border-radius:999px;cursor:pointer;
+         border:1px solid var(--rule);background:var(--bg);color:var(--ink)}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+  .hint{color:var(--quiet);font-size:12.5px}
+  .stats{display:flex;gap:26px;flex-wrap:wrap;margin:22px 0 6px}
+  .stat b{display:block;font-size:22px;font-weight:600;line-height:1.2}
+  .stat span{color:var(--quiet);font-size:12px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin:16px 0 4px}
+  .lg{display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;
+      padding:3px 9px;border-radius:999px;border:1px solid transparent;user-select:none}
+  .lg:hover{border-color:var(--rule)}
+  .lg.off{opacity:.38}
+  .sw{width:11px;height:11px;border-radius:3px;flex:none}
+  svg{display:block;width:100%;height:auto;overflow:visible}
+  .tip{position:fixed;pointer-events:none;opacity:0;transition:opacity .09s;
+       background:var(--bg);border:1px solid var(--rule);border-radius:9px;
+       padding:9px 11px;font-size:12.5px;box-shadow:0 6px 22px rgba(0,0,0,.14);max-width:260px;z-index:9}
+  .tip b{font-size:13px}
+  .tip table{border-collapse:collapse;margin-top:5px;width:100%}
+  .tip td{padding:1px 0;color:var(--quiet)}
+  .tip td:last-child{text-align:right;color:var(--ink);font-variant-numeric:tabular-nums;padding-left:16px}
+  h2{font-size:14px;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet);
+     font-weight:600;margin:34px 0 10px}
+  footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
+         color:var(--quiet);font-size:13px}
+  footer a{color:var(--accent)}
+  .note{color:var(--quiet);font-size:13px;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Constraint Graph Explorer</h1>
+  <p class="sub">Paste a protein sequence. Watch the encoding behind
+    <a href="https://doi.org/10.1093/bioadv/vbag181">BioGraphX</a> build in your
+    browser — no structure, no alignment, nothing sent anywhere.</p>
+
+  <div class="panel">
+    <textarea id="seq" spellcheck="false" aria-label="Protein sequence"></textarea>
+    <div class="row">
+      <button class="primary" id="go">Build graph</button>
+      <button data-preset="ubiquitin">Ubiquitin</button>
+      <button data-preset="insulin">Insulin</button>
+      <button data-preset="lysozyme">Lysozyme</button>
+      <button data-preset="random">Random</button>
+      <span class="hint" id="msg"></span>
+    </div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+  <div class="legend" id="legend"></div>
+  <svg id="arcs" role="img" aria-label="Arc diagram of residue interactions"></svg>
+
+  <h2>Per-residue profile</h2>
+  <p class="note" id="profnote">Hover any residue to see the features it carries
+    and which rules fired on it.</p>
+  <svg id="prof" role="img" aria-label="Per-residue feature profile"></svg>
+
+  <footer>
+    A simplified, in-browser demonstration of the published encoder: five
+    interaction rules and six descriptors, against twelve rules and 158
+    features in the paper. Written to show the mechanism, not to reproduce the
+    results. &nbsp;·&nbsp;
+    <a href="https://github.com/Abubakar-Saeed">github.com/Abubakar-Saeed</a>
+  </footer>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+const PRESETS = {
+  ubiquitin:"MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRGG",
+  insulin:"MALWMRLLPLLALLALWGPDPAAAFVNQHLCGSHLVEALYLVCGERGFFYTPKTRREAEDLQVGQVELGGGPGAGSLQPLALEGSLQKRGIVEQCCTSICSLYQLENYCN",
+  lysozyme:"KVFGRCELAAAMKRHGLDNYRGYSLGNWVCAAKFESNFNTQATNRNTDGSTDYGILQINSRWWCNDGRTPGSRNLCNIPCSALLSSDITASVNCAKKIVSDGNGMNAWVAWRNRCKGTDVQAWIRGCRL"
+};
+const AA = "ACDEFGHIKLMNPQRSTVWY";
+const KD = {I:4.5,V:4.2,L:3.8,F:2.8,C:2.5,M:1.9,A:1.8,G:-0.4,T:-0.7,S:-0.8,
+            W:-0.9,Y:-1.3,P:-1.6,H:-3.2,E:-3.5,Q:-3.5,D:-3.5,N:-3.5,K:-3.9,R:-4.5};
+const POS = "KRH", NEG = "DE", AROM = "FWY", HPHO = "AVLIMFWC", POLAR = "STNQGY";
+const klass = a => HPHO.includes(a) ? 0 : POLAR.includes(a) ? 1
+                 : POS.includes(a) ? 2 : NEG.includes(a) ? 3 : 1;
+const CLASS_NAME = ["hydrophobic","polar","positive","negative"];
+
+// --- the rule set -------------------------------------------------------
+const RULES = [
+  {name:"hydrophobic",  v:"--c1", s:1.00, d:20, t:(a,b)=>HPHO.includes(a)&&HPHO.includes(b)},
+  {name:"salt bridge",  v:"--c2", s:1.20, d:12, t:(a,b)=>(POS.includes(a)&&NEG.includes(b))||(NEG.includes(a)&&POS.includes(b))},
+  {name:"hydrogen bond",v:"--c3", s:0.80, d:8,  t:(a,b)=>POLAR.includes(a)&&POLAR.includes(b)},
+  {name:"π–π",v:"--c5", s:0.90, d:15, t:(a,b)=>AROM.includes(a)&&AROM.includes(b)},
+  {name:"cation–π",v:"--c4", s:0.85, d:12, t:(a,b)=>(POS.includes(a)&&AROM.includes(b))||(AROM.includes(a)&&POS.includes(b))},
+];
+let OFF = new Set();
+
+function buildGraph(seq){
+  const edges = [], adj = seq.split("").map(()=>[]);
+  for(let i=0;i<seq.length;i++)
+    for(let j=i+2;j<seq.length;j++){
+      const d = j-i;
+      for(let r=0;r<RULES.length;r++){
+        const R = RULES[r];
+        if(d<=R.d && R.t(seq[i],seq[j])){
+          // weight falls off with sequence separation, as in the encoder
+          const w = R.s * (1 - 0.3*d/R.d);
+          edges.push({i,j,r,w,d});
+          adj[i].push(j); adj[j].push(i);
+          break;                       // first matching rule claims the pair
+        }
+      }
+    }
+  return {edges, adj};
+}
+
+function features(seq, g){
+  const n = seq.length, f = [];
+  const wdeg = new Array(n).fill(0), deg = new Array(n).fill(0), sep = new Array(n).fill(0);
+  for(const e of g.edges){
+    if(OFF.has(e.r)) continue;
+    wdeg[e.i]+=e.w; wdeg[e.j]+=e.w; deg[e.i]++; deg[e.j]++;
+    sep[e.i]+=e.d; sep[e.j]+=e.d;
+  }
+  for(let i=0;i<n;i++){
+    const nb = new Set(g.adj[i]);
+    let tri = 0;
+    for(const a of nb) for(const b of g.adj[a]) if(nb.has(b)) tri++;
+    const k = nb.size;
+    const lo = Math.max(0,i-5), hi = Math.min(n,i+6);
+    let hyd = 0;
+    for(let q=lo;q<hi;q++) hyd += (KD[seq[q]]||0);
+    f.push({
+      degree: deg[i],
+      weighted: wdeg[i],
+      clustering: k>1 ? tri/(k*(k-1)) : 0,
+      contactOrder: deg[i] ? sep[i]/deg[i] : 0,
+      localHydro: hyd/(hi-lo),
+      charge: (POS.includes(seq[i])?1:0) - (NEG.includes(seq[i])?1:0)
+    });
+  }
+  return f;
+}
+
+// --- rendering ----------------------------------------------------------
+const NS = "http://www.w3.org/2000/svg";
+const el = (t,a={})=>{const e=document.createElementNS(NS,t);
+  for(const k in a) e.setAttribute(k,a[k]); return e;};
+const cssv = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+let STATE = null;
+
+function draw(){
+  const {seq,g,f} = STATE, n = seq.length;
+  const W = 1000, step = W/(n-1 || 1), base = 230, R = Math.max(2, Math.min(4.6, step*0.34));
+  const svg = document.getElementById("arcs");
+  svg.setAttribute("viewBox", `0 0 ${W} ${base+26}`);
+  svg.innerHTML = "";
+
+  const shown = g.edges.filter(e=>!OFF.has(e.r));
+  const maxSpan = Math.max(1, ...shown.map(e=>e.d));
+  svg.appendChild(el("line",{x1:0,y1:base,x2:W,y2:base,
+    stroke:cssv("--rule"),"stroke-width":1}));
+
+  for(const e of shown){
+    const x1 = e.i*step, x2 = e.j*step, rx = (x2-x1)/2;
+    const ry = Math.min(base-16, 16 + (e.d/maxSpan)*(base-40));
+    const p = el("path",{d:`M ${x1} ${base} A ${rx} ${ry} 0 0 1 ${x2} ${base}`,
+      fill:"none", stroke:cssv(RULES[e.r].v),
+      "stroke-width": 0.7 + e.w*0.9,
+      "stroke-opacity": Math.max(0.16, 0.62 - 0.012*e.d)});
+    p.dataset.i = e.i; p.dataset.j = e.j;
+    svg.appendChild(p);
+  }
+  for(let i=0;i<n;i++){
+    const c = el("circle",{cx:i*step, cy:base, r:R,
+      fill:cssv(["--c1","--c3","--c2","--c4"][klass(seq[i])])});
+    c.dataset.idx = i; c.style.cursor = "crosshair";
+    svg.appendChild(c);
+  }
+
+  // profile: weighted degree, the quantity the graph is built to produce
+  const P = document.getElementById("prof"), ph = 120;
+  P.setAttribute("viewBox", `0 0 ${W} ${ph}`);
+  P.innerHTML = "";
+  const mx = Math.max(1e-9, ...f.map(x=>x.weighted));
+  for(let i=0;i<n;i++){
+    const h = (f[i].weighted/mx)*(ph-18);
+    const b = el("rect",{x:i*step-Math.max(1,step*0.32), y:ph-h,
+      width:Math.max(1.4, step*0.64), height:h, rx:Math.min(2,step*0.3),
+      fill:cssv("--accent"), "fill-opacity":0.85});
+    b.dataset.idx = i; b.style.cursor="crosshair";
+    P.appendChild(b);
+  }
+  P.appendChild(el("line",{x1:0,y1:ph,x2:W,y2:ph,stroke:cssv("--rule"),"stroke-width":1}));
+
+  document.getElementById("stats").innerHTML = [
+    [n,"residues"], [shown.length,"interactions"],
+    [(2*shown.length/n).toFixed(1),"mean degree"],
+    [(shown.reduce((a,e)=>a+e.d,0)/(shown.length||1)).toFixed(1),"mean separation"]
+  ].map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+}
+
+function legend(){
+  document.getElementById("legend").innerHTML = RULES.map((R,i)=>
+    `<span class="lg ${OFF.has(i)?"off":""}" data-r="${i}">
+       <span class="sw" style="background:${cssv(R.v)}"></span>${R.name}</span>`).join("");
+}
+
+// --- interaction --------------------------------------------------------
+const tip = document.getElementById("tip");
+function showTip(ev, i){
+  const {seq,f,g} = STATE, x = f[i];
+  const fired = {};
+  for(const e of g.edges)
+    if((e.i===i||e.j===i) && !OFF.has(e.r))
+      fired[RULES[e.r].name] = (fired[RULES[e.r].name]||0)+1;
+  const rows = [["weighted degree",x.weighted.toFixed(2)],
+                ["degree",x.degree],
+                ["clustering",x.clustering.toFixed(2)],
+                ["mean separation",x.contactOrder.toFixed(1)],
+                ["local hydrophobicity",x.localHydro.toFixed(2)]];
+  tip.innerHTML = `<b>${seq[i]}${i+1}</b> &nbsp;<span style="color:var(--quiet)">${CLASS_NAME[klass(seq[i])]}</span>
+    <table>${rows.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join("")}</table>
+    <div style="margin-top:6px;color:var(--quiet)">${
+      Object.keys(fired).length ? Object.entries(fired).map(([k,v])=>`${k} ×${v}`).join(" · ")
+                                : "no interactions"}</div>`;
+  tip.style.opacity = 1;
+  const pad = 14, w = 260;
+  tip.style.left = Math.min(ev.clientX+pad, innerWidth-w-pad) + "px";
+  tip.style.top  = Math.min(ev.clientY+pad, innerHeight-150) + "px";
+}
+function hoverHandler(ev){
+  const t = ev.target;
+  if(t.dataset && t.dataset.idx !== undefined){ showTip(ev, +t.dataset.idx); highlight(+t.dataset.idx); }
+}
+function highlight(i){
+  for(const p of document.querySelectorAll("#arcs path")){
+    const on = (+p.dataset.i===i || +p.dataset.j===i);
+    p.setAttribute("stroke-opacity", on ? 0.95 : 0.08);
+    p.setAttribute("stroke-width", on ? 2 : 0.8);
+  }
+}
+function clearHL(){
+  tip.style.opacity = 0;
+  if(STATE) draw();
+}
+
+function run(){
+  const raw = document.getElementById("seq").value;
+  const seq = raw.replace(/^>.*$/gm,"").replace(/[^A-Za-z]/g,"").toUpperCase()
+                 .split("").filter(c=>AA.includes(c)).join("").slice(0,320);
+  const msg = document.getElementById("msg");
+  if(seq.length < 8){ msg.textContent = "Needs at least 8 standard amino acids."; return; }
+  msg.textContent = raw.replace(/[^A-Za-z]/g,"").length > 320
+    ? "Showing the first 320 residues." : "";
+  const g = buildGraph(seq);
+  STATE = {seq, g, f: features(seq,g)};
+  legend(); draw();
+}
+
+document.getElementById("go").onclick = run;
+document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
+  const k = b.dataset.preset;
+  document.getElementById("seq").value = k === "random"
+    ? Array.from({length:110},()=>AA[Math.floor(Math.random()*20)]).join("")
+    : PRESETS[k];
+  run();
+});
+document.getElementById("legend").onclick = e => {
+  const t = e.target.closest(".lg"); if(!t) return;
+  const r = +t.dataset.r;
+  OFF.has(r) ? OFF.delete(r) : OFF.add(r);
+  STATE.f = features(STATE.seq, STATE.g);
+  legend(); draw();
+};
+for(const id of ["arcs","prof"]){
+  const s = document.getElementById(id);
+  s.addEventListener("mousemove", hoverHandler);
+  s.addEventListener("mouseleave", clearHL);
+}
+document.getElementById("seq").value = PRESETS.ubiquitin;
+run();
+</script>
+</body>
+</html>
